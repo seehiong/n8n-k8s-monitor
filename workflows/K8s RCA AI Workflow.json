@@ -1,0 +1,630 @@
+{
+  "name": "K8s RCA AI Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"cluster_healthy\": false,\n  \"issue_type\": \"pod\",\n  \"severity\": \"warning\",\n  \"affected_namespace\": \"example-namespace\",\n  \"affected_resource\": \"example-pod\",\n  \"root_cause\": \"Container crash due to missing required environment variable DATABASE_URL\",\n  \"need_approval\": false,\n  \"suggested_commands\": \"kubectl set env pod/example-pod DATABASE_URL=postgres://db:5432/app -n example-namespace\",\n  \"fix_applied\": false,\n  \"summary\": \"Pod example-pod in namespace example-namespace is in CrashLoopBackOff due to missing DATABASE_URL environment variable\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        912,
+        640
+      ],
+      "id": "2bfece23-8886-44cd-ac2d-648c35457f41",
+      "name": "Structured Output Parser",
+      "notes": "Forces structured JSON output: cluster_healthy, issue_type, severity (info/warning/critical), affected_namespace, affected_resource, root_cause, need_approval, fix_applied, suggested_commands, summary."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Edit Fields').item.json.telegram_chat_id }}",
+        "text": "=*Cluster Healthy*: {{ $('AI Agent').item.json.output.cluster_healthy }}\n*Issue Type*: {{ $('AI Agent').item.json.output.issue_type }}\n*Severity*: {{ $json.output.severity }}\n*Affected NS*: {{ $('AI Agent').item.json.output.affected_namespace }}\n*Root Cause*: {{ $('AI Agent').item.json.output.root_cause }}\n*Suggested Commands*: {{ $('AI Agent').item.json.output.suggested_commands }}\n*Apply Fix*: {{ $json.output.fix_applied }}\n*Summary*: {{ $('AI Agent').item.json.output.summary }}\n",
+        "replyMarkup": "=",
+        "forceReply": {},
+        "replyKeyboardOptions": {},
+        "replyKeyboardRemove": {},
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        512
+      ],
+      "id": "9096a7da-c519-4ae6-b855-e09d960b0087",
+      "name": "Send a text message",
+      "webhookId": "25c63e44-50a3-4451-a333-cf2695e398bb",
+      "credentials": {
+        "telegramApi": {
+          "id": "6ojqn9gxfLoSJbmS",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "⚠️ REPLACE CHAT ID: Sends the RCA report as a notification when no approval is needed (issue auto-resolved or informational only)."
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "cluster_healthy",
+              "type": "boolean"
+            },
+            {
+              "name": "issues_detected",
+              "type": "boolean"
+            },
+            {
+              "name": "issue_type"
+            },
+            {
+              "name": "summary"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        416
+      ],
+      "id": "6204da24-e372-4c8f-b442-7c43f3211349",
+      "name": "When Executed by Another Workflow",
+      "notes": "Receives health assessment from K8s Health AI Workflow: cluster_healthy, issues_detected, issue_type, summary."
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $('Edit Fields').item.json.telegram_chat_id }}",
+        "message": "=*Cluster Healthy*: {{ $('AI Agent').item.json.output.cluster_healthy }}\n*Issue Type*: {{ $('AI Agent').item.json.output.issue_type }}\n*Severity*: {{ $json.output.severity }}\n*Affected NS*: {{ $('AI Agent').item.json.output.affected_namespace }}\n*Root Cause*: {{ $('AI Agent').item.json.output.root_cause }}\n*Suggested Commands*: {{ $('AI Agent').item.json.output.suggested_commands }}\n*Apply Fix*: {{ $json.output.fix_applied }}\n*Summary*: {{ $('AI Agent').item.json.output.summary }}\n",
+        "approvalOptions": {
+          "values": {}
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1568,
+        320
+      ],
+      "id": "fc292d0e-bcbf-4395-afd1-9e883a0103e6",
+      "name": "Send message and wait for response",
+      "webhookId": "ea1695cb-9324-4e6d-91ca-71e318eaf44c",
+      "credentials": {
+        "telegramApi": {
+          "id": "6ojqn9gxfLoSJbmS",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "⚠️ REPLACE CHAT ID: Sends the full RCA report to Telegram and pauses until a human clicks Approve or Reject. Approve → triggers remediation. Reject → stops."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "86f792c1-f37e-4d4f-9eb2-7d522d6d93e1",
+              "name": "input",
+              "value": "=Cluster Healthy: {{ $json.cluster_healthy }}\nIssues Detected: {{ $json.issues_detected }}\nIssue Type: {{ $json.issue_type }}\nSummary: {{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "dd37f4e5-2c74-4511-bd6c-0b8512d3f6e0",
+              "name": "session_key",
+              "value": "rcaAgent",
+              "type": "string"
+            },
+            {
+              "id": "b17ba0ed-caba-4f30-bc45-4ac6ebcf1b8c",
+              "name": "telegram_chat_id",
+              "value": "={{$env.TELEGRAM_CHAT_ID}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        304,
+        416
+      ],
+      "id": "ae5dcbab-ef25-4951-a9a7-294d604e76ad",
+      "name": "Edit Fields",
+      "notes": "Formats the health assessment fields into a plain-text prompt for the AI Agent and sets the session key for memory continuity."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=The K8s Health AI agent detected a potential issue. \nHealth assessment:\n{{ $json.input }}\n\nPerform root cause analysis and determine the exact cause of the problem.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "# Kubernetes Root Cause Analysis Agent\nYou are a Kubernetes Site Reliability Engineering (SRE) diagnostics agent responsible for performing root cause analysis (RCA) on incidents detected by the monitoring workflow.\n\nYou will receive a health assessment from a monitoring agent. Your goal is to investigate the issue, determine the most likely root cause, and either request human approval before applying a fix or report findings directly if no approval is needed.\n\n# Investigation Responsibilities\n1. Validate the issue reported by the monitoring agent.\n2. Use the Diagnostics Tool to run additional kubectl or talosctl commands if needed.\n3. Identify the root cause of the issue.\n4. Propose a specific, targeted remediation command.\n5. Set need_approval based on the Remediation rules below.\n\nFocus on common Kubernetes failure scenarios:\n- CrashLoopBackOff / ImagePullBackOff\n- Pending pods / FailedScheduling\n- FailedMount / Node NotReady\n- PersistentVolumeClaim Pending / StorageClass mismatch\n- Resource exhaustion / Configuration errors\n\n# Tool Usage\nUse the Diagnostics Tool to inspect the cluster. Pass full kubectl or talosctl commands as input.\nExamples:\n- kubectl get pods -A\n- kubectl describe pod <pod-name> -n <namespace>\n- kubectl get pvc -A\n- kubectl get storageclass\n- kubectl logs <pod-name> -n <namespace>\n- talosctl health --nodes <node-ip>\n\n# Root Cause Determination\nIdentify the most specific and direct cause of the failure:\n- PVC references a non-existent StorageClass\n- Pod fails due to ImagePullBackOff\n- Node is NotReady due to resource pressure\n- Pod cannot schedule due to insufficient CPU\n- Volume mount failed due to missing PersistentVolume\n- Pod terminated due to node shutdown (DisruptionTarget / exit code 137)\n\nIf healthy replacement pods are already Running, set cluster_healthy to true and note the auto-recovery in the summary.\n\n# Severity Levels\nUse only: info | warning | critical\n\n# Allowed Issue Types\nUse only: none | pod | deployment | node | storage | networking | scheduling | configuration | unknown\n\n# Remediation\nSet need_approval to true for any command that modifies cluster state (delete, patch, scale, apply, restart) where the issue is still active and requires intervention.\nSet need_approval to false when the issue has already auto-resolved (healthy replacements are running) and any suggested command is optional cleanup only.\n\nWhen fixing an image error:\n- Prefer `kubectl set image deployment/<name> <container>=<image> -n <namespace>` for controller-managed pods.\n- Use `kubectl set image pod/<name> <container>=<image> -n <namespace>` only for standalone pods with no controlling Deployment or StatefulSet.\n- Before suggesting `kubectl set image pod/<name>`, verify the pod still exists with `kubectl get pod <name> -n <namespace>`. If it no longer exists (e.g. deleted after failure or completed with `restartPolicy: Never`), set `need_approval: false`, leave `suggested_commands` empty, and note in the summary that the pod has already been cleaned up and no action is needed.\n\n# Output Format (STRICT)\nIMPORTANT: Do not include reasoning, analysis steps, or explanatory text in your response.\nReturn valid JSON only. No markdown fences, no explanations, no extra text outside the JSON object.\n\n{\n  \"cluster_healthy\": false,\n  \"issue_type\": \"storage\",\n  \"severity\": \"critical\",\n  \"affected_namespace\": \"default\",\n  \"affected_resource\": \"resource-name\",\n  \"root_cause\": \"clear technical root cause\",\n  \"need_approval\": true,\n  \"fix_applied\": false,\n  \"suggested_commands\": \"specific remediation command\",\n  \"summary\": \"concise explanation of the problem\"\n}",
+          "maxIterations": 10
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        648,
+        416
+      ],
+      "id": "b0763994-e0b1-4c6f-8d7f-a1abb7a3e531",
+      "name": "AI Agent",
+      "notes": "RCA agent powered by Claude Haiku 4.5. Investigates the reported issue using the Diagnostics Tool (kubectl/talosctl), determines root cause, and proposes a targeted fix. Sets need_approval=true for active issues that require human sign-off."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "99d21032-cd13-421a-98d1-f8ced83a5ef9",
+              "leftValue": "={{ $json.output.need_approval }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        416
+      ],
+      "id": "03b4457d-150b-452a-90fa-42031c9dbf5a",
+      "name": "If need approval",
+      "notes": "True (need_approval=true) → Telegram send-and-wait for human approval before remediation. False (auto-resolved or info) → sends notification and checks for optional cleanup commands."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "UKLHBrBqmUfTIcRP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/UKLHBrBqmUfTIcRP",
+          "cachedResultName": "K8s Remediation AI Workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "issue_type": "={{ $('AI Agent').item.json.output.issue_type }}",
+            "severity": "={{ $('AI Agent').item.json.output.severity }}",
+            "affected_namespace": "={{ $('AI Agent').item.json.output.affected_namespace }}",
+            "affected_resource": "={{ $('AI Agent').item.json.output.affected_resource }}",
+            "root_cause": "={{ $('AI Agent').item.json.output.root_cause }}",
+            "suggested_commands": "={{ $('AI Agent').item.json.output.suggested_commands }}",
+            "summary": "={{ $('AI Agent').item.json.output.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "cluster_healthy",
+              "displayName": "cluster_healthy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": true
+            },
+            {
+              "id": "issue_type",
+              "displayName": "issue_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "severity",
+              "displayName": "severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "affected_namespace",
+              "displayName": "affected_namespace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "affected_resource",
+              "displayName": "affected_resource",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "root_cause",
+              "displayName": "root_cause",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "suggested_commands",
+              "displayName": "suggested_commands",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1792,
+        416
+      ],
+      "id": "1419e135-43af-4e45-b1f2-207dd2d5e266",
+      "name": "Call 'K8s Remediation AI Workflow'",
+      "notes": "Triggers K8s Remediation AI Workflow with full RCA context: issue_type, severity, affected_namespace, affected_resource, root_cause, suggested_commands, summary."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "0f38607b-7e6f-4dce-870f-a7bc53508ef4",
+              "leftValue": "={{ $('AI Agent').item.json.output.fix_applied }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "6727b9cb-33da-4917-a1d9-4f3784d96f2b",
+              "leftValue": "={{ $('AI Agent').item.json.output.suggested_commands }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1568,
+        512
+      ],
+      "id": "629380ff-63cc-45a1-8931-ebfe40fb4441",
+      "name": "If fix applied and suggested commands not empty",
+      "notes": "Checks: fix NOT yet applied AND suggested commands exist. If both true → triggers remediation. Otherwise → stops (nothing to do)."
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.session_key }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        640
+      ],
+      "id": "92da980a-05e6-41b1-81f3-ed8bf6a9163f",
+      "name": "Simple Memory",
+      "notes": "Maintains conversation context across the agent's tool-call iterations within a single run. Session key is set in Edit Fields."
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "Claude Haiku 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "id": "ed63ca76-42b9-42a5-96e7-f9d052d53291",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "jjFBW6oQqAfXL3Jm",
+          "name": "Anthropic account"
+        }
+      },
+      "notes": "Uses Claude Haiku 4.5 (Anthropic cloud). Replace with any Anthropic model slug or swap for an OpenAI/Ollama Chat Model node to use a different provider."
+    },
+    {
+      "parameters": {
+        "content": "## 🔍 K8s RCA AI Workflow\n\nTriggered by K8s Health AI Workflow when an issue is detected. Uses **Claude Haiku** to perform root cause analysis, then routes to a **human approval gate** or directly to remediation.\n\n**Flow:**\n1. Receives health summary (issue_type, summary) from K8s Health AI Workflow\n2. AI Agent investigates using kubectl/talosctl via the Diagnostics Tool\n3. Returns structured RCA report (root_cause, severity, suggested_commands, need_approval)\n4. If `need_approval=true` → Telegram message waits for human Approve/Reject\n5. If `need_approval=false` (auto-resolved) → sends notification, then calls Remediation if commands exist\n6. Approved or auto-path triggers K8s Remediation AI Workflow",
+        "height": 284,
+        "width": 1220
+      },
+      "id": "c5df2280-2b30-4f1e-952b-8b23658d49b5",
+      "name": "Sticky Note — Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Setup\n\n**1. Anthropic API Key**\nCreate an API key at console.anthropic.com → connect to *Anthropic Chat Model* node.\n\n**2. Telegram Bot**\nCreate via @BotFather → connect to both Telegram nodes and set your chat ID.\n\n**3. K8s Remediation Workflow**\nEnsure K8s Remediation AI Workflow is active — this workflow calls it after approval.",
+        "height": 348,
+        "width": 360,
+        "color": 3
+      },
+      "id": "822c0c7b-a44e-4192-99f2-db886c0b322e",
+      "name": "Sticky Note — Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ✋ Human Approval Gate\n`need_approval=true` → Telegram send-and-wait\nHuman clicks **Approve** → remediation runs\nHuman clicks **Reject** → workflow stops\n\n`need_approval=false` (auto-resolved) → notification only, then checks for cleanup commands",
+        "height": 192,
+        "width": 400,
+        "color": 4
+      },
+      "id": "cfb70ac5-334a-40de-ad0a-9f7c0fb07184",
+      "name": "Sticky Note — Approval Gate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1504,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "0DpTAgIkwE3WpV6T",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/0DpTAgIkwE3WpV6T",
+          "cachedResultName": "Input Command Workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [
+            "input"
+          ],
+          "schema": [
+            {
+              "id": "input",
+              "displayName": "input",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        640
+      ],
+      "id": "7e0f1324-b730-47ab-bf97-e3a6813c0ccb",
+      "name": "Diagnostics Tool"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send message and wait for response": {
+      "main": [
+        [
+          {
+            "node": "Call 'K8s Remediation AI Workflow'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "If fix applied and suggested commands not empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If need approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If need approval": {
+      "main": [
+        [
+          {
+            "node": "Send message and wait for response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If fix applied and suggested commands not empty": {
+      "main": [
+        [
+          {
+            "node": "Call 'K8s Remediation AI Workflow'",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnostics Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "ca541126-a68e-42fb-b093-dbe8eb774b0e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "DHCht6KGaAZtqdrs",
+  "tags": []
+}

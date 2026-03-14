@@ -1,0 +1,97 @@
+{
+  "name": "Input Command Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "command": "={{ $json.input }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        3424,
+        848
+      ],
+      "id": "440c93c8-d703-4876-939d-2b8ca1f9d78f",
+      "name": "Execute Input Command",
+      "notes": "Runs the command string from $json.input in the OS shell and returns stdout/stderr. Output is passed back to the calling workflow as the sub-workflow result."
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "input"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        3200,
+        848
+      ],
+      "id": "4f929ce8-5193-46fb-bf59-18bec0825ae7",
+      "name": "When Executed by Another Workflow",
+      "notes": "Entry point for sub-workflow calls. Expects one input field: input (string) - the full shell command to run (e.g. kubectl get pods -A)."
+    },
+    {
+      "parameters": {
+        "content": "## 🔧 Input Command Workflow\n\nA **utility sub-workflow** used as a tool by AI agent workflows. It receives a shell command string and executes it on the n8n host, returning the output.\n\n**Used by:**\n- Homelab AI — Kubernetes Health Monitor\n- K8s Health AI Workflow\n- K8s RCA AI Workflow\n- K8s Remediation AI Workflow\n\n**How it works:**\n1. Parent workflow calls this sub-workflow with an `input` field (the command string)\n2. This workflow runs the command via the OS shell\n3. Output (stdout/stderr) is returned to the calling workflow",
+        "height": 372,
+        "width": 700
+      },
+      "id": "18e22420-5947-4b19-9c79-5a24b66510f0",
+      "name": "Sticky Note — Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2944,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Setup Requirements\n\n**kubectl** and **talosctl** must be installed and configured on the machine running n8n.\n\n- `~/.kube/config` must point to your cluster\n- `talosctl` endpoints must be reachable\n- n8n process must have permission to execute these binaries\n\n**Security note:** This sub-workflow executes arbitrary shell commands. Only connect it to trusted AI agents with a read-only system prompt.",
+        "height": 308,
+        "width": 380,
+        "color": 3
+      },
+      "id": "d667f067-7830-4614-b0e9-e36c2e1dae13",
+      "name": "Sticky Note — Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3664,
+        464
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Execute Input Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "40b7aa4b-0fd8-4bc2-952f-13a503b02133",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "0DpTAgIkwE3WpV6T",
+  "tags": []
+}

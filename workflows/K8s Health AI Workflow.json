@@ -1,0 +1,501 @@
+{
+  "name": "K8s Health AI Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "80c5065a-d711-40fd-b90a-60587a8536ba",
+              "name": "commands",
+              "value": "[   \"kubectl get nodes -o wide\",   \"kubectl get pods -A\",   \"talosctl health --nodes 192.168.68.115 --wait-timeout 10s\",   \"talosctl health --nodes 192.168.68.116 --wait-timeout 10s\",   \"talosctl health --nodes 192.168.68.117 --wait-timeout 10s\" ]",
+              "type": "array"
+            },
+            {
+              "id": "0c70e6e9-b783-45a8-8cb9-992c9b266a33",
+              "name": "telegram_chat_id",
+              "value": "={{$env.TELEGRAM_CHAT_ID}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1680,
+        512
+      ],
+      "id": "9673cd5e-c7ff-45cc-891e-8d56c6670525",
+      "name": "Edit Fields",
+      "notes": "Defines the list of kubectl and talosctl commands to run. Update the 3 IPs (192.168.68.115/116/117) to match your own control-plane node addresses."
+    },
+    {
+      "parameters": {
+        "executeOnce": false,
+        "command": "={{ $json.commands }}"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -1232,
+        512
+      ],
+      "id": "a33703b9-2b11-4807-b5ba-802448907d3a",
+      "name": "Execute Command",
+      "alwaysOutputData": false,
+      "onError": "continueErrorOutput",
+      "notes": "Runs each command in the OS shell. onError=continueErrorOutput ensures both stdout (success) and stderr (failure) feed into Merge — no output is lost."
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10,
+              "triggerAtMinute": 45
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1904,
+        512
+      ],
+      "id": "ac87678a-1e4b-4fe0-ab8a-7caee563637d",
+      "name": "Schedule Trigger",
+      "notes": "Runs daily at 10:45 AM. Adjust triggerAtHour / triggerAtMinute to change the schedule."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "commands",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1456,
+        512
+      ],
+      "id": "1acecfdf-cb27-40e4-bd58-1c8a59f34e91",
+      "name": "Split Out",
+      "notes": "Splits the commands array into individual items so Execute Command runs each one separately."
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "stdout"
+            },
+            {
+              "fieldToAggregate": "stderr"
+            }
+          ]
+        },
+        "options": {
+          "mergeLists": false
+        }
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        512
+      ],
+      "id": "76e79c3e-f266-4734-90c1-8f63427b75d6",
+      "name": "Aggregate",
+      "notes": "Collects all stdout and stderr arrays from every command run into a single item that the AI Agent can analyze at once."
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\"cluster_healthy\": true,\n\"issues_detected\": false,\n\"issue_type\": \"none\",\n\"summary\": \"All nodes are ready and all pods are running normally.\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -424,
+        736
+      ],
+      "id": "aa36028d-594f-45e6-bdcd-95ccd950035d",
+      "name": "Structured Output Parser",
+      "onError": "continueErrorOutput",
+      "notes": "Forces the AI to return valid JSON with exactly: cluster_healthy (bool), issues_detected (bool), issue_type (string), summary (string)."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Edit Fields').item.json.telegram_chat_id }}",
+        "text": "=Cluster Health: {{ $json.output.cluster_healthy }}\nIssues Detected: {{ $json.output.issues_detected }}\nIssue Type: {{ $json.output.issue_type }}\nSummary: {{ $json.output.summary }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        416
+      ],
+      "id": "d369e1c0-770b-4fd0-9d27-a4bac911d5dc",
+      "name": "Send a text message",
+      "webhookId": "b1600179-fd50-44f1-98ba-2b005ffcd760",
+      "credentials": {
+        "telegramApi": {
+          "id": "6ojqn9gxfLoSJbmS",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "⚠️ REPLACE CHAT ID: Change -1003747387698 to your own Telegram group or user chat ID. Sends a daily all-clear when the cluster is healthy."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1329997f-bf31-441b-bb50-aab7effe17e3",
+              "leftValue": "={{ $json.output.cluster_healthy }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -208,
+        512
+      ],
+      "id": "f34682bf-3e0d-4f41-8a86-cd55a00a76c7",
+      "name": "Is Cluster Healthy",
+      "notes": "True branch (cluster_healthy=true) → Telegram all-clear message. False branch → triggers K8s RCA AI Workflow to investigate the root cause."
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:35b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -552,
+        736
+      ],
+      "id": "6976e9d4-8f35-4770-88be-7b0b4f0536a2",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "Qp3gPm1RTQCeXyo2",
+          "name": "Ollama account"
+        }
+      },
+      "notes": "Uses qwen3.5:35b running locally via Ollama. Replace with any Ollama model slug. To use cloud models instead, swap this node for an OpenRouter or OpenAI Chat Model node."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=From the kubectl commands:\n- kubectl get nodes -o wide\n- kubectl get pods -A --field-selector=status.phase!=Running\n- talosctl health --nodes 192.168.68.115\n- talosctl health --nodes 192.168.68.116\n- talosctl health --nodes 192.168.68.117\n\nThese are the aggregated command responses:\n{{ $('Aggregate').item.json.stdout }}\n\nThese commands failed or returned errors:\n{{ $('Aggregate').item.json.stderr }}\n\nBased on these results, assess the cluster health. Treat any command errors as potential indicators of node or connectivity issues.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a Kubernetes diagnostics assistant responsible for monitoring and assessing the health of a Kubernetes cluster.\n\n# Health Determination\nSet cluster_healthy to:\n- true → all nodes and workloads are healthy\n- false → there are failing pods, nodes, storage issues, or scheduling failures\n\nExamples of unhealthy states: CrashLoopBackOff, Pending pods, PVC stuck in Pending, node NotReady, repeated restart loops, failed image pulls, volume mount failures.\n\nAllowed issue_type values: none | pod | deployment | node | storage | networking | scheduling | unknown\n\n# Output Format (STRICT)\nReturn valid JSON only. No markdown, no extra text.\n{\n  \"cluster_healthy\": true,\n  \"issues_detected\": false,\n  \"issue_type\": \"none\",\n  \"summary\": \"All nodes are ready and all pods are running normally.\"\n}\n\n# Known False Positives — Do NOT flag these as issues:\n- Completed CoreDNS pods typically result from terminated ReplicaSet revisions and are normal during rolling updates.\n- kube-system pods with low restart counts (< 5) on a recently provisioned cluster (< 7 days) → expected during initial setup."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -560,
+        512
+      ],
+      "id": "f9235c5e-2d25-49a3-92f5-8d4c0f51254c",
+      "name": "AI Agent",
+      "notes": "Analyzes the aggregated command output using a local Ollama model. System prompt enforces strict JSON output and defines known false positives (e.g. completed CoreDNS pods)."
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1008,
+        512
+      ],
+      "id": "00e9e9f6-68ba-4ae1-883f-5041164fdcc3",
+      "name": "Merge",
+      "notes": "Combines the success branch (stdout) and error branch (stderr) from Execute Command so all results flow into Aggregate regardless of exit code."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "DHCht6KGaAZtqdrs",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/DHCht6KGaAZtqdrs",
+          "cachedResultName": "K8s RCA AI Workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cluster_healthy": "={{ $json.output.cluster_healthy }}",
+            "issues_detected": "={{ $json.output.issues_detected }}",
+            "issue_type": "={{ $json.output.issue_type }}",
+            "summary": "={{ $json.output.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "cluster_healthy",
+              "displayName": "cluster_healthy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "issues_detected",
+              "displayName": "issues_detected",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "issue_type",
+              "displayName": "issue_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        16,
+        608
+      ],
+      "id": "f3731b10-36a9-4234-8ed7-da78e9a85302",
+      "name": "Call 'K8s RCA AI Workflow'",
+      "notes": "Triggers the K8s RCA AI Workflow when issues are detected. Passes cluster_healthy, issues_detected, issue_type, and summary as inputs for deeper investigation."
+    },
+    {
+      "parameters": {
+        "content": "## 🏥 K8s Health AI Workflow\n\nRuns a set of **kubectl** and **talosctl** commands on a fixed schedule, feeds the raw output to a **local Ollama AI model**, and sends a **Telegram alert** based on the result.\n\n**Flow:**\n1. Triggers daily at 10:45 AM\n2. Splits command list and runs each command in parallel\n3. Merges + aggregates all stdout/stderr into one item\n4. AI model analyzes output and returns structured JSON health report\n5. If healthy → Telegram all-clear message\n6. If unhealthy → triggers K8s RCA AI Workflow for root cause analysis\n\n**Model:** Ollama (local, self-hosted) — no cloud API cost",
+        "height": 336,
+        "width": 1900
+      },
+      "id": "47b1da71-d0b7-4063-a927-5d7fa6321d27",
+      "name": "Sticky Note — Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1952,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Setup\n\n**1. Ollama**\nInstall Ollama and pull the model:\n`ollama pull qwen3.5:35b`\nConnect to the *Ollama Chat Model* node.\n\n**2. Node IPs**\nUpdate the 3 control-plane IPs in *Edit Fields*:\n`192.168.68.115/116/117` → your node IPs\n\n**3. Telegram Bot**\nCreate via @BotFather → connect to *Send a text message* node and set your chat ID\n\n**4. K8s RCA Workflow**\nEnsure the K8s RCA AI Workflow is active — this workflow calls it on failure.",
+        "height": 404,
+        "width": 380,
+        "color": 3
+      },
+      "id": "2b3f6c1c-d430-43a0-94db-26711acd026a",
+      "name": "Sticky Note — Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔄 Command Pipeline\nEach command runs individually via *Split Out → Execute Command → Merge → Aggregate*.\nThis ensures all stdout AND stderr are captured regardless of command exit code.",
+        "height": 136,
+        "width": 860,
+        "color": 5
+      },
+      "id": "53bb57f8-5923-47b4-b24c-3cb1ac0403ff",
+      "name": "Sticky Note — Pipeline",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1856,
+        752
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Cluster Healthy": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call 'K8s RCA AI Workflow'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Is Cluster Healthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "532b25f7-eb27-46e3-9934-16d964f4275f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "xjIc1ek4L8ENM7kD",
+  "tags": []
+}

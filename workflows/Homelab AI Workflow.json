@@ -1,0 +1,396 @@
+{
+  "name": "Homelab AI Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🏠 Homelab AI — Kubernetes Health Monitor\n\nAutomatically checks your **Kubernetes + Talos** cluster health every day and sends a **Telegram alert** only when issues are detected.\n\n**Flow:**\n1. Triggers daily at 9:45 AM\n2. AI agent runs `kubectl` + `talosctl` diagnostics\n3. Returns structured JSON health report\n4. Sends Telegram alert if issues found\n\n**Model:** Ollama (local, self-hosted) — no cloud API cost",
+        "height": 280,
+        "width": 956
+      },
+      "id": "a88fb50c-f957-4072-bfb8-b6114610586d",
+      "name": "Sticky Note — Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Setup\n\n**1. OpenRouter**\nFree account at openrouter.ai → connect to *OpenRouter Chat Model*\n\n**2. Telegram Bot**\nCreate via @BotFather → connect to *Send a text message* + set your chat ID\n\n**3. Input Command Workflow**\nA sub-workflow that runs `kubectl`/`talosctl` on your cluster → set its ID in *Diagnostics Tool*",
+        "height": 292,
+        "width": 528,
+        "color": 3
+      },
+      "id": "7ea7cfac-57ed-4ed0-8262-668bc44e3d9e",
+      "name": "Sticky Note — Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 AI Agent — Read-only diagnostics only\nThe agent is instructed to **never modify the cluster**. It only runs `kubectl get/describe/logs` and `talosctl health/service/dmesg`. Safe to run on production clusters.",
+        "height": 120,
+        "width": 652,
+        "color": 4
+      },
+      "id": "54c56a65-ac9f-4608-8a0d-d8ea0572a27d",
+      "name": "Sticky Note — Agent",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        976,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔧 Input Command Workflow\nThis tool calls a sub-workflow that executes shell commands on your cluster.\n\nThe sub-workflow must accept an `input` field (the command string) and return the output.\n\n**Update the workflow ID** in the Diagnostics Tool node to match your own.",
+        "width": 396,
+        "color": 5
+      },
+      "id": "43c25e29-9462-48a1-bd02-eab9bfe046e2",
+      "name": "Sticky Note — Sub-workflow",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        912,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9,
+              "triggerAtMinute": 45
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        272
+      ],
+      "id": "076e6a58-d2a8-4bcd-8cef-8d741ccac5f0",
+      "name": "Schedule Trigger",
+      "notes": "Runs daily at 9:45 AM. Change triggerAtHour / triggerAtMinute to adjust the schedule."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1fcd5a1-f8d7-41ab-96ad-5987f9973e68",
+              "name": "prompt",
+              "value": "Check the health of the cluster",
+              "type": "string"
+            },
+            {
+              "id": "420ca6ed-a34d-4f91-8b7c-aa6907c1a9b0",
+              "name": "session_key",
+              "value": "talosNodeHealth",
+              "type": "string"
+            },
+            {
+              "id": "203a5eb4-ec0c-4e63-b00c-29c26c1e3caa",
+              "name": "telegram_chat_id",
+              "value": "={{$env.TELEGRAM_CHAT_ID}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        272
+      ],
+      "id": "1f64ead6-5d80-4a20-becd-d9fe43b7a02d",
+      "name": "Edit Fields",
+      "notes": "Sets the diagnostic prompt sent to the AI agent. Change 'prompt' to focus on specific namespaces or resources."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a Kubernetes diagnostics assistant responsible for checking the health and status of a Kubernetes cluster.\n\nYour job is to investigate cluster issues using the available kubectl diagnostic tool and determine whether workloads are running correctly.\n\nYou must follow a structured troubleshooting workflow and return results in a strict JSON format.\n\n\n\n# Mandatory First Step\n\nAlways begin diagnostics by running this baseline diagnostic bundle:\n\nkubectl get nodes\n\nkubectl get pods -A\n\nkubectl get pvc -A\n\nkubectl get pv\n\ntalosctl health --nodes <control-plane-ip>\n\n\n\nThese commands provide the initial cluster health snapshot and must always be executed before deeper investigation.\n\n\n\n# Investigation Workflow\n\n1. Check cluster health\n\n- kubectl get pods -A\n\n- kubectl get deployments -A\n\n- kubectl get nodes\n\n\n\n2. Check storage state\n\n- kubectl get pvc -A\n\n- kubectl get pv\n\n- kubectl get storageclass\n\n\n\n3. Check cluster events\n\n- kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 50\n\n\n\n4. Check Talos node health\n\n- talosctl health --nodes <control-plane-ip>\n\n- talosctl service list --nodes <control-plane-ip>\n\n- talosctl dmesg --nodes <control-plane-ip> | tail -n 50\n\n\n\n5. If resources are unhealthy, run deeper diagnostics\n\n- kubectl describe pod <pod-name> -n <namespace>\n\n- kubectl describe pvc <pvc-name> -n <namespace>\n\n- kubectl logs <pod-name> -n <namespace>\n\n\n\n6. Identify root causes such as:\n\n- CrashLoopBackOff\n\n- Pending pods\n\n- ImagePullBackOff\n\n- FailedScheduling\n\n- FailedMount\n\n- FailedBinding\n\n- Node NotReady\n\n- Storage provisioning failures\n\n\n\n7. Summarize findings clearly.\n\n\n\n# Tool Usage Rules\n\nUse the Diagnostics Tool for all cluster inspection.\n\nOnly run read-only commands, including:\n\n\n\nkubectl:\n\n- kubectl get\n\n- kubectl describe\n\n- kubectl logs\n\n- kubectl get events\n\n\n\ntalosctl:\n\n- talosctl health\n\n- talosctl service list\n\n- talosctl dmesg\n\n- talosctl logs\n\n\n\nNever run commands that modify the cluster such as:\n\n- kubectl apply\n\n- kubectl create\n\n- kubectl delete\n\n- kubectl patch\n\n- kubectl scale\n\n- kubectl edit\n\n- kubectl rollout restart\n\n\n\nIf deeper investigation is needed, use additional kubectl or talosctl read-only commands only.\n\n\n\n# Event Interpretation Rule\n\nKubernetes events may contain historical warnings.\n\nIf the current resource state shows healthy status (pods Running, PVC Bound, nodes Ready), the cluster should be considered healthy even if past warning events exist.\n\nOnly treat an issue as active if the current resource state still indicates a failure.\n\n\n\n# Health Determination\n\nSet cluster_healthy to:\n\n- true → all nodes and workloads are healthy\n\n- false → there are failing pods, nodes, storage issues, or scheduling failures\n\n\n\nExamples of unhealthy states:\n\n- pods in CrashLoopBackOff\n\n- pods stuck in Pending\n\n- PVC stuck in Pending\n\n- node NotReady\n\n- repeated restart loops\n\n- failed image pulls\n\n- volume mount failures\n\n\n\nAllowed Issue Types\n\nUse only these values for issue_type:\n\n- none\n\n- pod\n\n- deployment\n\n- node\n\n- storage\n\n- networking\n\n- scheduling\n\n- unknown\n\n\n\n# Output Format (STRICT)\n\nReturn valid JSON only.\n\nDo not include markdown formatting, explanations, or additional text.\n\nThe response must exactly follow this structure:\n\n\n\nExample when healthy:\n\n{\n\n  \"cluster_healthy\": true,\n\n  \"issues_detected\": false,\n\n  \"issue_type\": \"none\",\n\n  \"summary\": \"All nodes are ready and all pods are running normally.\"\n\n}\n\n\n\nExample when broken:\n\n{\n\n  \"cluster_healthy\": false,\n\n  \"issues_detected\": true,\n\n  \"issue_type\": \"pod\",\n\n  \"summary\": \"A deployment in namespace monitoring has two pods stuck in CrashLoopBackOff due to container startup failures.\"\n\n}\n\n\n\nExample storage failure:\n\n{\n\n  \"cluster_healthy\": false,\n\n  \"issues_detected\": true,\n\n  \"issue_type\": \"storage\",\n\n  \"summary\": \"A PersistentVolumeClaim in namespace 'default' is stuck in Pending because no matching PersistentVolume or StorageClass is available.\"\n\n}",
+          "maxIterations": 20
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        776,
+        272
+      ],
+      "id": "480719e8-692e-4df6-ad55-953c4e126e5b",
+      "name": "AI Agent",
+      "notes": "Kubernetes diagnostics agent. The system prompt enforces read-only commands and strict JSON output. Up to 20 tool-call iterations per run."
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.session_key }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        784,
+        496
+      ],
+      "id": "62339334-c46d-4c78-9eae-a2cad81d2319",
+      "name": "Simple Memory",
+      "notes": "Keeps conversation context across the agent's tool-call iterations within a single run. Session key is set in Edit Fields."
+    },
+    {
+      "parameters": {
+        "description": "Use this Diagnostics Tool to execute either kubectl or talosctl commands to inspect the Kubernetes cluster and Talos nodes.",
+        "workflowId": {
+          "__rl": true,
+          "value": "0DpTAgIkwE3WpV6T",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/0DpTAgIkwE3WpV6T",
+          "cachedResultName": "Input Command Workflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [
+            "input"
+          ],
+          "schema": [
+            {
+              "id": "input",
+              "displayName": "input",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        912,
+        496
+      ],
+      "id": "b7856c0d-0050-4894-9361-38a245b23d93",
+      "name": "Diagnostics Tool",
+      "notes": "⚠️ REPLACE WORKFLOW ID: Points to a sub-workflow that executes kubectl/talosctl shell commands on your cluster and returns the output. Create your own and update the workflow ID here."
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"cluster_healthy\": true,\n  \"issues_detected\": false,\n  \"issue_type\": \"pod\",\n  \"summary\": \"All nodes are ready and all pods are running normally.\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        496
+      ],
+      "id": "2aa506fb-394b-4665-b760-04dd1008fea0",
+      "name": "Structured Output Parser",
+      "notes": "Forces the AI to return valid JSON with exactly these fields: cluster_healthy (bool), issues_detected (bool), issue_type (string), summary (string)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "423635a9-c6eb-494b-b2ea-e055bd9b9901",
+              "leftValue": "={{ $json.output.issues_detected }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1248,
+        272
+      ],
+      "id": "c65f3781-16cb-4fe2-a4b2-19588b11fbe4",
+      "name": "If issues detected",
+      "notes": "True branch → sends Telegram alert. False branch (no output) → silent pass, cluster is healthy. Add a node on the false branch if you want a daily 'all clear' message."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Edit Fields').item.json.telegram_chat_id }}",
+        "text": "=cluster healthy: {{ $json.output.cluster_healthy }}\nissues detected: {{ $json.output.issues_detected }}\nissue type: {{ $json.output.issue_type }}\nsummary: {{ $json.output.summary }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1472,
+        272
+      ],
+      "id": "8d114cc5-eb36-4d77-82bf-d6e5aeba09e5",
+      "name": "Send a text message",
+      "webhookId": "36d5144f-7251-472f-bd8c-fad6fb696daa",
+      "credentials": {
+        "telegramApi": {
+          "id": "6ojqn9gxfLoSJbmS",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "⚠️ REPLACE CHAT ID: Change -1003747387698 to your own Telegram group or user chat ID. Connect your own Telegram bot credentials."
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:35b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        656,
+        496
+      ],
+      "id": "a38dcdd4-b3ea-4445-b770-58869779476d",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "Qp3gPm1RTQCeXyo2",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If issues detected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnostics Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If issues detected": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "2035dabc-b49a-4c14-95d5-61633695b346",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "558d88703fb65b2d0e44613bc35916258b0f0bf983c5d4730c00c424b77ca36a"
+  },
+  "id": "sHNoSVEAzYYOumxK",
+  "tags": []
+}
